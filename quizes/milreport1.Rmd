@@ -1,0 +1,134 @@
+---
+title: "Milestone Report"
+author: "Diana Giraldo"
+date: "October 15, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = '~/capstone_DS_spec/')
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library("R.utils")
+library("tidytext")
+library("dplyr")
+library("ggplot2")
+library("knitr")
+```
+
+## Summary
+This report contains: 
+
+- An exploratory analysis of the text data 
+- A brief exploration of the data model that will be used to create the prediction algorithm.
+
+## Exploring data
+
+The main goal of this section is to show how to read the data and have some insight about the content.
+
+### Reading text data
+
+The first step is to have a global description of the 3 sources of text data: news, blogs and twitter. To do so, I counted the lines of each file and read each one of them once to calculate the average number of words per line:
+
+```{r data_description, cache = TRUE, results = 'asis'}
+TS <- data.frame(source = c("news", "blogs", "twitter"),
+                 nlines = NA, av.words = NA)
+
+for (s in 1:3){
+    infile <- sprintf("data/en_US/en_US.%s.txt", TS$source[s])
+    TS$nlines[s] <- countLines(infile)
+    con <- file(infile)
+    tmp <- readLines(con)
+    close(con)
+    TS$av.words[s] <- round(mean(sapply(strsplit(tmp, "\\s+"), length), na.rm = TRUE), digits = 2)
+    rm(tmp)
+}
+
+kable(TS, col.names = c("Text source", "lines of text", "average words per line"))
+```
+
+For the next exploratory steps we can can only read a fraction `fr` of the lines in each file and put them in a single predefined data.frame structure `D`:
+
+```{r data_in_D, cache = TRUE, results = 'asis'}
+fr <- 0.05
+TS <- mutate(TS, lines2read = round(nlines*fr))
+D <- data.frame(txt = character(sum(TS$lines2read)), stringsAsFactors = FALSE)
+
+for (s in 1:3){
+    infile <- sprintf("data/en_US/en_US.%s.txt", TS$source[s])
+    con <- file(infile)
+    tmp <- readLines(con, n = TS$lines2read[s])
+    close(con)
+    if (s == 1){
+        tmp_idx <- seq(1, TS$lines2read[s])
+    } else{
+        tmp_idx <- seq((TS$lines2read[s-1] + 1), (TS$lines2read[s-1] + TS$lines2read[s]))
+    }
+    D[tmp_idx, 1] <- tmp  
+    rm(tmp, tmp_idx)
+}
+```
+
+The first 3 lines in `D` are:
+
+```{r print_D, echo = FALSE}
+kable(head(D, n=3))
+```
+
+## Data Model 
+
+The relationships between words can be modelled as N-grams, in this case, single words are considered 1-grams. We can create general functions to count and plot the histograms for the most common N-grams in text data:
+
+```{r func_ngrams}
+freq_ngram <- function(A, ng){
+    freq <- A %>%
+    unnest_tokens(output = n.gram, input = txt, token = "ngrams", n = ng) %>%
+    count(n.gram, sort = TRUE)
+    return(freq)
+}
+
+hist_ngram <- function(freq, ntop, ng){
+    pl <- ggplot(freq[1:ntop,], aes(x = n.gram, y = n)) + geom_bar(stat = "identity") +
+        labs(title  = sprintf("Frequency of the top %d %d-grams", ntop, ng)) + theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+    return(pl)
+}
+```
+
+### Frequency of words
+
+Then we can use this function to plot the histogram of the 15 most frequent words by specifying the parameters:
+
+```{r word_freq, cache=TRUE, echo=FALSE}
+ng <- 1
+freq1 <- freq_ngram(D, ng)
+
+ntop <- 15
+pl1 <- hist_ngram(freq1, ntop, ng)
+pl1
+```
+
+As expected, the most frequent word in english text is "`r freq1$n.gram[1]`" followed by "`r freq1$n.gram[2]`" and "`r freq1$n.gram[3]`".
+
+### Frequency of 2-grams and 3-grams
+
+Using the same functions, we can plot the 10 most common 2-grams:
+
+```{r plot_2gram_freq, cache=TRUE, echo=FALSE}
+ng <- 2
+freq2 <- freq_ngram(D, ng)
+
+ntop <- 10
+pl2 <- hist_ngram(freq2, ntop, ng)
+pl2
+```
+
+And the 20 most common 3-grams:
+
+```{r plot_3gram_freq, cache=TRUE, echo=FALSE}
+ng <- 3
+freq3 <- freq_ngram(D, ng)
+
+ntop <- 20
+pl3 <- hist_ngram(freq3, ntop, ng)
+pl3
+```
